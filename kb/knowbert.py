@@ -13,8 +13,10 @@ from allennlp.modules.token_embedders import Embedding
 from allennlp.nn.util import device_mapping
 from allennlp.common.file_utils import cached_path
 
+# from pytorch_pretrained_bert.modeling import BertForPreTraining, BertLayer, BertLayerNorm, BertConfig, BertEncoder
 
-from pytorch_pretrained_bert.modeling import BertForPreTraining, BertLayer, BertLayerNorm, BertConfig, BertEncoder
+from pytorch_pretrained_bert.modeling import BertLayerNorm, BertConfig, BertEncoder
+from transformers.models.bert import BertForPreTraining  # BertLayer, BertConfig, BertEncoder
 
 import torch
 import numpy as np
@@ -44,7 +46,8 @@ def print_shapes(x, prefix='', raise_on_nan=False):
             print_shapes(v, prefix + ' ' + k + ':')
     else:
         print("COULDN'T get shape ", type(x))
-            
+
+
 def diagnose_backward_hook(module, m_input, m_output):
     print("------")
     print('Inside ' + module.__class__.__name__ + ' backward')
@@ -54,6 +57,7 @@ def diagnose_backward_hook(module, m_input, m_output):
     print("OUTPUT:")
     print_shapes(m_output)
     print("=======")
+
 
 def diagnose_forward_hook(module, m_input, m_output):
     print("------")
@@ -68,7 +72,7 @@ def diagnose_forward_hook(module, m_input, m_output):
 
 class BertPretrainedMetricsLoss(Model):
     def __init__(self, vocab: Vocabulary,
-                       regularizer: RegularizerApplicator = None):
+                 regularizer: RegularizerApplicator = None):
         super().__init__(vocab, regularizer)
 
         self.nsp_loss_function = torch.nn.CrossEntropyLoss(ignore_index=-1)
@@ -100,7 +104,7 @@ class BertPretrainedMetricsLoss(Model):
 
         # (batch_size, timesteps, vocab_size), (batch_size, 2)
         prediction_scores, seq_relationship_score = self.pretraining_heads(
-                contextual_embeddings, pooled_output
+            contextual_embeddings, pooled_output
         )
 
         loss_metrics = []
@@ -144,7 +148,7 @@ class BertPretrainedMetricsLoss(Model):
                      lm_labels_ids,
                      mask_indicator):
         prediction_scores, seq_relationship_score = self.pretraining_heads(
-                contextual_embeddings, pooled_output
+            contextual_embeddings, pooled_output
         )
         self._metrics['mrr'](prediction_scores, lm_labels_ids, mask_indicator)
 
@@ -154,6 +158,7 @@ class BertPretrainedMaskedLM(BertPretrainedMetricsLoss):
     """
     So we can evaluate and compute the loss of the pretrained bert model
     """
+
     def __init__(self,
                  vocab: Vocabulary,
                  bert_model_name: str,
@@ -188,7 +193,6 @@ class BertPretrainedMaskedLM(BertPretrainedMetricsLoss):
             if new_embeddings is not None:
                 state_dict['bert.bert.embeddings.token_type_embeddings.weight'] = new_embeddings.weight
         super().load_state_dict(state_dict, strict=strict)
-
 
     def forward(self,
                 tokens,
@@ -249,10 +253,10 @@ class DotAttentionWithPrior(torch.nn.Module):
             self.register_buffer('null_embedding', null_embedding)
 
     def forward(self,
-            projected_span_representations,
-            candidate_entity_embeddings,
-            candidate_entity_prior,
-            entity_mask):
+                projected_span_representations,
+                candidate_entity_embeddings,
+                candidate_entity_prior,
+                entity_mask):
         """
         projected_span_representations = (batch_size, num_spans, entity_dim)
         candidate_entity_embeddings = (batch_size, num_spans, num_candidates, entity_embedding_dim)
@@ -298,7 +302,7 @@ class DotAttentionWithPrior(torch.nn.Module):
         return_dict = {'linking_scores': linking_scores}
 
         weighted_entity_embeddings = self._get_weighted_entity_embeddings(
-                linking_scores, candidate_entity_embeddings
+            linking_scores, candidate_entity_embeddings
         )
         return_dict['weighted_entity_embeddings'] = weighted_entity_embeddings
 
@@ -368,7 +372,7 @@ class EntityDisambiguator(BaseEntityDisambiguator, torch.nn.Module):
         self.dropout = torch.nn.Dropout(dropout)
 
         self.bert_to_kg_projector = torch.nn.Linear(
-                contextual_embedding_dim, entity_embedding_dim)
+            contextual_embedding_dim, entity_embedding_dim)
         init_bert_weights(self.bert_to_kg_projector, initializer_range)
         self.projected_span_layer_norm = BertLayerNorm(entity_embedding_dim, eps=1e-5)
         init_bert_weights(self.projected_span_layer_norm, initializer_range)
@@ -389,10 +393,10 @@ class EntityDisambiguator(BaseEntityDisambiguator, torch.nn.Module):
         else:
             null_embedding = None
         self.dot_attention_with_prior = DotAttentionWithPrior(
-                 output_feed_forward_hidden_dim,
-                 weighted_entity_threshold,
-                 null_embedding,
-                 initializer_range
+            output_feed_forward_hidden_dim,
+            weighted_entity_threshold,
+            null_embedding,
+            initializer_range
         )
         self.null_entity_id = null_entity_id
         self.contextual_embedding_dim = contextual_embedding_dim
@@ -403,7 +407,7 @@ class EntityDisambiguator(BaseEntityDisambiguator, torch.nn.Module):
             # create BertConfig
             assert len(span_encoder_config) == 4
             config = BertConfig(
-                0, # vocab size, not used
+                0,  # vocab size, not used
                 hidden_size=span_encoder_config['hidden_size'],
                 num_hidden_layers=span_encoder_config['num_hidden_layers'],
                 num_attention_heads=span_encoder_config['num_attention_heads'],
@@ -466,7 +470,7 @@ class EntityDisambiguator(BaseEntityDisambiguator, torch.nn.Module):
                 candidate_entity_priors: torch.Tensor,
                 candidate_segment_ids: torch.Tensor,
                 **kwargs
-        ):
+                ):
         """
         contextual_embeddings = (batch_size, timesteps, dim) output
             from language model
@@ -516,16 +520,15 @@ class EntityDisambiguator(BaseEntityDisambiguator, torch.nn.Module):
 
         entity_mask = candidate_entities > 0
         return_dict = self.dot_attention_with_prior(
-                    projected_span_representations,
-                    candidate_entity_embeddings,
-                    candidate_entity_priors,
-                    entity_mask)
+            projected_span_representations,
+            candidate_entity_embeddings,
+            candidate_entity_priors,
+            entity_mask)
 
         return_dict['projected_span_representations'] = projected_span_representations
         return_dict['projected_bert_representations'] = projected_bert_representations
 
         return return_dict
-
 
 
 @Model.register("entity_linking_with_candidate_mentions")
@@ -563,13 +566,13 @@ class EntityLinkingWithCandidateMentions(EntityLinkingBase):
 
         elif kg_model is not None:
             entity_embedding = kg_model.get_entity_embedding()
-            entity_embedding_dim  = entity_embedding.embedding_dim
+            entity_embedding_dim = entity_embedding.embedding_dim
 
         elif entity_embedding is not None:
-            entity_embedding_dim  = entity_embedding.get_output_dim()
+            entity_embedding_dim = entity_embedding.get_output_dim()
 
         elif concat_entity_embedder is not None:
-            entity_embedding_dim  = concat_entity_embedder.get_output_dim()
+            entity_embedding_dim = concat_entity_embedder.get_output_dim()
             set_requires_grad(concat_entity_embedder, False)
             entity_embedding = concat_entity_embedder
 
@@ -582,23 +585,21 @@ class EntityLinkingWithCandidateMentions(EntityLinkingBase):
         assert null_entity_id != self.vocab.get_token_index('@@UNKNOWN@@', namespace)
 
         self.disambiguator = EntityDisambiguator(
-                 contextual_embedding_dim,
-                 entity_embedding_dim=entity_embedding_dim,
-                 entity_embeddings=entity_embedding,
-                 max_sequence_length=max_sequence_length,
-                 span_encoder_config=span_encoder_config,
-                 dropout=dropout,
-                 output_feed_forward_hidden_dim=output_feed_forward_hidden_dim,
-                 initializer_range=initializer_range,
-                 weighted_entity_threshold=weighted_entity_threshold,
-                 include_null_embedding_in_dot_attention=include_null_embedding_in_dot_attention,
-                 null_entity_id=null_entity_id)
-
+            contextual_embedding_dim,
+            entity_embedding_dim=entity_embedding_dim,
+            entity_embeddings=entity_embedding,
+            max_sequence_length=max_sequence_length,
+            span_encoder_config=span_encoder_config,
+            dropout=dropout,
+            output_feed_forward_hidden_dim=output_feed_forward_hidden_dim,
+            initializer_range=initializer_range,
+            weighted_entity_threshold=weighted_entity_threshold,
+            include_null_embedding_in_dot_attention=include_null_embedding_in_dot_attention,
+            null_entity_id=null_entity_id)
 
     def get_metrics(self, reset: bool = False):
         metrics = super().get_metrics(reset)
         return metrics
-
 
     def unfreeze(self, mode):
         # don't hold an parameters directly, so do nothing
@@ -629,10 +630,10 @@ class EntityLinkingWithCandidateMentions(EntityLinkingBase):
 
         if 'gold_entities' in kwargs:
             loss_dict = self._compute_loss(
-                    candidate_entities['ids'],
-                    candidate_spans,
-                    linking_scores,
-                    kwargs['gold_entities']['ids']
+                candidate_entities['ids'],
+                candidate_spans,
+                linking_scores,
+                kwargs['gold_entities']['ids']
             )
             return_dict.update(loss_dict)
 
@@ -662,7 +663,7 @@ class SolderedKG(Model):
         # the span attention layers
         assert len(span_attention_config) == 4
         config = BertConfig(
-            0, # vocab size, not used
+            0,  # vocab size, not used
             hidden_size=span_attention_config['hidden_size'],
             num_hidden_layers=span_attention_config['num_hidden_layers'],
             num_attention_heads=span_attention_config['num_attention_heads'],
@@ -675,7 +676,7 @@ class SolderedKG(Model):
         self.output_layer_norm = BertLayerNorm(self.contextual_embedding_dim, eps=1e-5)
 
         self.kg_to_bert_projection = torch.nn.Linear(
-                self.entity_embedding_dim, self.contextual_embedding_dim
+            self.entity_embedding_dim, self.contextual_embedding_dim
         )
 
         self.should_init_kg_to_bert_inverse = should_init_kg_to_bert_inverse
@@ -732,16 +733,16 @@ class SolderedKG(Model):
                 **kwargs):
 
         linker_output = self.entity_linker(
-                contextual_embeddings, tokens_mask,
-                candidate_spans, candidate_entities, candidate_entity_priors,
-                candidate_segment_ids, **kwargs)
+            contextual_embeddings, tokens_mask,
+            candidate_spans, candidate_entities, candidate_entity_priors,
+            candidate_segment_ids, **kwargs)
 
         # update the span representations with the entity embeddings
         span_representations = linker_output['projected_span_representations']
         weighted_entity_embeddings = linker_output['weighted_entity_embeddings']
         spans_with_entities = self.weighted_entity_layer_norm(
-                (span_representations +
-                self.dropout(weighted_entity_embeddings)).contiguous()
+            (span_representations +
+             self.dropout(weighted_entity_embeddings)).contiguous()
         )
 
         # now run self attention between bert and spans_with_entities
@@ -749,19 +750,19 @@ class SolderedKG(Model):
         # this is done in projected dimension
         entity_mask = candidate_spans[:, :, 0] > -1
         span_attention_output = self.span_attention_layer(
-                linker_output['projected_bert_representations'],
-                spans_with_entities,
-                entity_mask
+            linker_output['projected_bert_representations'],
+            spans_with_entities,
+            entity_mask
         )
         projected_bert_representations_with_entities = span_attention_output['output']
         entity_attention_probs = span_attention_output["attention_probs"]
 
         # finally project back to full bert dimension!
         bert_representations_with_entities = self.kg_to_bert_projection(
-                projected_bert_representations_with_entities
+            projected_bert_representations_with_entities
         )
         new_contextual_embeddings = self.output_layer_norm(
-                (contextual_embeddings + self.dropout(bert_representations_with_entities)).contiguous()
+            (contextual_embeddings + self.dropout(bert_representations_with_entities)).contiguous()
         )
 
         return_dict = {'entity_attention_probs': entity_attention_probs,
@@ -804,7 +805,7 @@ class KnowBert(BertPretrainedMetricsLoss):
 
         # list of (layer_number, soldered key) sorted in ascending order
         self.layer_to_soldered_kg = sorted(
-                [(layer, key) for key, layer in soldered_layers.items()]
+            [(layer, key) for key, layer in soldered_layers.items()]
         )
         # the last layer
         num_bert_layers = len(self.pretrained_bert.bert.encoder.layer)
@@ -843,14 +844,14 @@ class KnowBert(BertPretrainedMetricsLoss):
         new_embeddings.weight.data.copy_(token_type_embeddings.data[0, :])
         return new_embeddings
 
-
     def load_state_dict(self, state_dict, strict=True):
         if self.remap_segment_embeddings:
             # hack the embeddings!
-            new_embeddings = self._remap_embeddings(state_dict['pretrained_bert.bert.embeddings.token_type_embeddings.weight'])
+            new_embeddings = self._remap_embeddings(
+                state_dict['pretrained_bert.bert.embeddings.token_type_embeddings.weight'])
             if new_embeddings is not None:
                 state_dict['pretrained_bert.bert.embeddings.token_type_embeddings.weight'] = new_embeddings.weight
-        super().load_state_dict(state_dict, strict=strict)
+        super().load_state_dict(state_dict, strict=False)  # strict=strict)
 
     def unfreeze(self):
         if self.mode == 'entity_linking':
@@ -877,7 +878,6 @@ class KnowBert(BertPretrainedMetricsLoss):
 
         return metrics
 
-
     def forward(self, tokens=None, segment_ids=None, candidates=None,
                 lm_label_ids=None, next_sentence_label=None, **kwargs):
 
@@ -893,14 +893,17 @@ class KnowBert(BertPretrainedMetricsLoss):
 
         gold_entities = kwargs.pop('gold_entities', None)
 
-
+        attentions = []
         for layer_num, soldered_kg_key in self.layer_to_soldered_kg:
             end_layer_index = layer_num + 1
             if end_layer_index > start_layer_index:
                 # run bert from start to end layers
                 for layer in self.pretrained_bert.bert.encoder.layer[
-                                start_layer_index:end_layer_index]:
-                    contextual_embeddings = layer(contextual_embeddings, attention_mask)
+                             start_layer_index:end_layer_index]:
+                    layer_outputs = layer(contextual_embeddings, attention_mask, output_attentions=True)
+                    contextual_embeddings = layer_outputs[0]
+                    attentions.append(layer_outputs[1])
+                    # print(contextual_embeddings)
             start_layer_index = end_layer_index
 
             # run the SolderedKG component
@@ -911,9 +914,9 @@ class KnowBert(BertPretrainedMetricsLoss):
                 if gold_entities is not None and soldered_kg_key in gold_entities:
                     soldered_kwargs['gold_entities'] = gold_entities[soldered_kg_key]
                 kg_output = soldered_kg(
-                        contextual_embeddings=contextual_embeddings,
-                        tokens_mask=mask,
-                        **soldered_kwargs)
+                    contextual_embeddings=contextual_embeddings,
+                    tokens_mask=mask,
+                    **soldered_kwargs)
 
                 if 'loss' in kg_output:
                     loss = loss + kg_output['loss']
@@ -930,10 +933,10 @@ class KnowBert(BertPretrainedMetricsLoss):
         if lm_label_ids is not None or next_sentence_label is not None:
             # compute loss !
             masked_lm_loss, next_sentence_loss = self._compute_loss(
-                    contextual_embeddings,
-                    pooled_output,
-                    lm_label_ids,
-                    next_sentence_label)
+                contextual_embeddings,
+                pooled_output,
+                lm_label_ids,
+                next_sentence_label)
 
             loss = loss + masked_lm_loss + next_sentence_loss
 
@@ -946,6 +949,7 @@ class KnowBert(BertPretrainedMetricsLoss):
         output['loss'] = loss
         output['pooled_output'] = pooled_output
         output['contextual_embeddings'] = contextual_embeddings
+        output["attentions"] = attentions
 
         return output
 
