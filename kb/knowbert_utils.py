@@ -1,6 +1,6 @@
 
 from typing import Union, List
-
+import os
 from allennlp.common import Params
 from allennlp.data import Instance, DataIterator, Vocabulary
 from allennlp.common.file_utils import cached_path
@@ -47,7 +47,10 @@ class KnowBertBatchifier:
                        wordnet_entity_file=None, vocab_dir=None):
 
         # get bert_tokenizer_and_candidate_generator
-        config = _extract_config_from_archive(cached_path(model_archive))
+        if os.path.isdir(model_archive):
+            config = Params.from_file(os.path.join(model_archive, 'config.json'))
+        else:
+            config = _extract_config_from_archive(cached_path(model_archive))
 
         # look for the bert_tokenizers and candidate_generator
         candidate_generator_params = _find_key(
